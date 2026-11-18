@@ -160,6 +160,20 @@ STATUS_ICON = (
 REC_GATE_SITE = 0x4009D9A4
 REC_GATE = (("FREE LOOP", "fl_gate_stub"), ("REC_TRIG_MUTE", "rtm_gate"))
 
+# ---- midi_key (codeless) ----------------------------------------------------
+# [MIDI]'s press and release longs in the MKI key table (record 0x400c0158;
+# stock 0x40055678 for both), which SRC3 KEY (sk_press / sk_release: in the
+# audio editor the SRC3 record key) and STEP VIEW (sg_kmidi: MIXER + MIDI
+# opens its view; in the view MIDI alone switches audio / MIDI) both repoint.
+# SRC3 KEY goes first: its records stay and, built with HK_MIDI_KEY (its own
+# defsym, SRC3 KEY's select), every [MIDI] it does not take (outside the
+# editor, the setting off, an MKII) goes to sg_kmidi where it went to stock.
+# In the editor SRC3 KEY takes the press and drops the release, so sg_kmidi
+# sees neither (its combo state, sg_mxk, is set only by a press it handles).
+# The MKII table's records stay STEP VIEW's alone (SRC3 KEY leaves them stock).
+MIDI_KEY_SITES = (0x400C015A, 0x400C015E)
+MIDI_KEY = (("SRC3 KEY", "sk_press"), ("STEP VIEW", "sg_kmidi"))
+
 # ---- ui_tick (codeless) -----------------------------------------------------
 # The UI task's tick 0x40056c28 (`move.l 0x460d1e6c,%d0`, the toast countdown),
 # which FREE LOOP and RELOAD_FROM_PROJECT both detour (jmp, each replaying the
@@ -377,7 +391,7 @@ def _mc_overrides(modules):
 BRIDGES = {"track_key": TRACK_KEY, "status_icon": STATUS_ICON, "frame_tail": FRAME_TAIL,
            "frame_entry": FRAME_ENTRY, "boot": BOOT, "chrom_pitch": CHROM_PITCH,
            "chromatic": CHROMATIC, "machine_rows": MACHINE_ROWS,
-           "rec_gate": REC_GATE, "ui_tick": UI_TICK}
+           "rec_gate": REC_GATE, "ui_tick": UI_TICK, "midi_key": MIDI_KEY}
 # SCOPE and TUNER have independent implementations but share TEMPO, frame
 # tail, and UI loop sites. HOOKS owns those sites only when both are present.
 SCOPE_TUNER = ("SCOPE", "TUNER")
@@ -389,7 +403,7 @@ BRIDGES["scope_tuner"] = tuple((key, sym) for key, sym in (
 FLAGS = {"frame_tail": "HK_FRAME_TAIL", "frame_entry": "HK_FRAME_ENTRY", "boot": "HK_BOOT",
          "chrom_pitch": "HK_CHROM_PITCH", "machine_rows": "HK_MACHINE_ROWS"}
 # Bridges that need no code of HOOKS's own: a participant's flagged build does it.
-CODELESS = {"chrom_pitch", "rec_gate", "ui_tick"}
+CODELESS = {"chrom_pitch", "rec_gate", "ui_tick", "midi_key"}
 
 
 _STORE_PARTS = runpy.run_path(str(Path(__file__).resolve().parents[1] / "store" / "parts.py"))
@@ -558,6 +572,8 @@ def select(modules):
         overrides += [Override(PITCH_SITE, key) for key, _sym in _present(CHROM_PITCH, modules)[1:]]
     if "rec_gate" in on:
         overrides.append(Override(REC_GATE_SITE, "REC_TRIG_MUTE"))  # FREE LOOP's detour stays
+    if "midi_key" in on:
+        overrides += [Override(a, "STEP VIEW") for a in MIDI_KEY_SITES]  # SRC3 KEY's records stay
     if "ui_tick" in on:
         overrides.append(Override(UI_TICK_SITE, "RELOAD_FROM_PROJECT"))  # FREE LOOP's detour stays
     if "chromatic" in on:

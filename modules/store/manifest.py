@@ -73,6 +73,10 @@ CLIENTS = (
     # pmute.work and the current bank's copy in CS1 (modules/pattern-mute, sambanks/octabam#1143)
     ("PATTERN MUTE", "pm", ("loadall_pre", "loadmask_pre", "newproj", "bankw_post", "pstore_pre",
                             "pstore_post", "preload_post", "tocs1", "fromcs1")),
+    # STEP VIEW's track names (names.work; github.com/Slingdinger/octatrack-step-view). It never calls
+    # store_refuse, so it has no CLIENT_IDS entry and no sgn_st_answer.
+    ("STEP VIEW", "sgn", ("loadall_pre", "loadmask_pre", "newproj", "bankw_post", "pstore_pre",
+                          "pstore_post", "preload_post", "partclear")),
 )
 
 
