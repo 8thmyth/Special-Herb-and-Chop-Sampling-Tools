@@ -17,5 +17,5 @@ REMIX = dataclasses.replace(
     # track's pattern record, which is the one-shot mask's steps 1 and 2 (bytes 24-31 = one-shots). A
     # one-shot on step 1 muted its track at the next mute write, and a PATTERN-layer mute edit deleted or
     # created step-1 one-shots on every track (owner's MKI over REMOTE, 4 captures; reproduced under the port).
-    modules=tuple(m for m in _BASE.modules if m != "PATTERN MUTE") + ("TRACK TRIG MODE", "PAGE LOOP", "TRIG MUTE", "LAZY CHOP TEMPO"),
+    modules=tuple(m for m in _BASE.modules if m != "PATTERN MUTE") + ("TRACK TRIG MODE", "PAGE LOOP", "TRIG MUTE", "LAZY CHOP TEMPO", "DARK MODE"),
 )

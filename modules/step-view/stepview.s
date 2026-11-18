@@ -3455,7 +3455,7 @@ sg_run:
         add.l   %a4,%d3
         lea     SG_FILL,%a0
         bsr     sg_r1
-.Lsg_pm:                                | the step playing (build 76): inverted in the blink's off phase
+.Lsg_pm:                                | the step playing (build 76): solid bar (Option 2)
         bsr     sg_selc                 | (first, the run marked: its steps inverted, build 82)
         tst.l   sg_full                 | (the full view: the column sg_fpc, build 94)
         beq.s   .Lsg_pmn
@@ -3463,14 +3463,14 @@ sg_run:
         add.l   %d4,%d3
         cmp.l   sg_fpc,%d3
         bne.s   .Lsg_cm
-        bsr     sg_mark
+        jsr     sg_play
         bra.s   .Lsg_cm
 .Lsg_pmn:
         move.l  %a6,%d3
         add.l   %d4,%d3
         cmp.l   %d5,%d3
         bne.s   .Lsg_cm
-        bsr     sg_mark                 | the cursor's filled box, steady (build 77: no blink)
+        jsr     sg_play                 | Option 2: solid vertical bar playhead
 .Lsg_cm:                                | the cursor (build 76): a frame round its step, the on phase
         bsr     sg_fstep
         bsr     sg_gcur
@@ -3482,10 +3482,7 @@ sg_run:
         bne.s   0f
         jsr     sg_hbox
         bra.s   .Lsg_ph
-0:      moveq   #32,%d0
-        and.l   sg_bk,%d0
-        bne.s   .Lsg_ph
-        bsr     sg_mark
+0:      bsr     sg_mark
 .Lsg_ph:
 .Lsg_nc:
         addq.l  #1,%d4
@@ -3730,7 +3727,7 @@ sg_run:
         add.l   sg_tof,%d0              | (the count runs from 0 at the offset, measured: build 100)
         cmp.l   %d0,%d5
         bne.s   .Lsg_tcm
-        bsr     sg_mark                 | the cursor's filled box, steady (build 77: no blink)
+        jsr     sg_play                 | Option 2: solid vertical bar playhead
 .Lsg_tcm:                               | the cursor: a frame round its step, the on phase (build 76)
         cmp.l   sg_trow,%d7
         bne.s   .Lsg_tcn
@@ -3740,9 +3737,6 @@ sg_run:
         bne.s   .Lsg_tcn
         bsr     sg_cvis
         beq.s   .Lsg_tcn
-        moveq   #32,%d0
-        and.l   sg_bk,%d0
-        bne.s   .Lsg_tcn
         bsr     sg_mark
 .Lsg_tcn:
         addq.l  #1,%d4
@@ -3903,7 +3897,7 @@ sg_mark:
         lea     -8(%sp),%sp
         movem.l %d2-%d3,(%sp)
         move.l  %d4,%d0
-        bsr     sg_colx
+        jsr     sg_colx
         subq.l  #1,%d0
         move.l  %d0,%d2
         add.l   sg_zp,%d2               | x0 - 1 .. x0 + 3 (the pitch less one, build 84)
@@ -3919,7 +3913,7 @@ sg_mark:
         move.l  sg_rh,%d3
         add.l   %a4,%d3
         lea     SG_RECT,%a0             | OUTLINE STYLE UI (hollow frame cursor box)
-        bsr     sg_r1
+        jsr     sg_r1
         movem.l (%sp),%d2-%d3
         addq.l  #8,%sp
         rts
@@ -10902,7 +10896,11 @@ sg_fpcs:
         bne.s   0f
         move.l  %d5,sg_fpc
         rts
-0:      moveq   #0,%d0
+0:      cmpi.l  #16,%d6                 | track length <= 16: use track step d5 directly (no Step 16 wrap glitch)
+        bgt.s   .Lfp_p
+        move.l  %d5,sg_fpc
+        rts
+.Lfp_p: moveq   #0,%d0
         move.w  0x800065b4,%d0          | P
         bsr     sg_pscl                 | (in the track's own steps, build 226; d1 set: scaled)
         tst.l   sg_view
@@ -11262,7 +11260,12 @@ sg_fdots:
 0:      move.l  sg_zp,%d0               | d5 the lines' spacing, d6 the grid's end
         muls.l  %d0,%d5
         move.l  sg_zn,%d6
-        muls.l  %d0,%d6
+        tst.l   sg_view                 | in TRKS lengths view (sg_view == 0, sg_flen != 0): stop dots before step 16 edge
+        bne.s   .Lfd_w
+        tst.l   sg_flen
+        beq.s   .Lfd_w
+        moveq   #16,%d6
+.Lfd_w: muls.l  %d0,%d6
         add.l   sg_gx,%d6
         subq.l  #1,%d6
         moveq   #1,%d7                  | d7: the screen row under the gap, 1-7
@@ -17093,8 +17096,202 @@ sgn_path: .space 260
 sgn_psrc: .space 260
 
 
+        .section .text
+        .balign 2
+
 | Arranger area restore: draws the arrangement box, clears rows 33-63, refreshes
 | arranger rows/bar, and restores the frame grid (with %d1 reload protection).
+| Playhead completely disabled: LCD stays clean and flicker-free,
+| playback position offloaded 100% to the 16 physical trig button LEDs.
+sg_play:
+        rts
+
+| Draw circular trig above step foot line:
+| Input: d0 = x0, a4 = row top y
+sg_circ:
+        lea     -24(%sp),%sp
+        movem.l %d2-%d7,(%sp)
+        move.l  %d0,%d6                 | d6 = x0
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1                 | d1 = cx
+        move.l  sg_rh,%d2
+        subq.l  #2,%d2
+        lsr.l   #1,%d2
+        add.l   %a4,%d2                 | d2 = cy
+
+        move.l  sg_rh,%d3
+        cmpi.l  #6,%d3
+        bge.s   .Lcirc_med
+
+        | --- 3x3 Small Circle (diamond disc) ---
+        | Top dot: (cx, cy - 1)
+        move.l  %d1,%d0
+        move.l  %d2,%d3
+        subq.l  #1,%d3
+        move.l  %d3,%d1
+        move.l  %d0,%d2
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Mid line: (cx - 1, cy) to (cx + 1, cy)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        move.l  %d1,%d0
+        subq.l  #1,%d0                  | x0 = cx - 1
+        addq.l  #1,%d1                  | x1 = cx + 1
+        move.l  %d1,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3                 | y0 = cy
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Bot dot: (cx, cy + 1)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        move.l  %d1,%d0
+        move.l  %d0,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        addq.l  #1,%d3
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+        braw    .Lcirc_done
+
+.Lcirc_med:
+        | --- 4x4 / 5x5 Circle for wider rows ---
+        | Row cy - 1: (cx - 1, cy - 1) to (cx + 1, cy - 1)
+        move.l  %d1,%d0
+        subq.l  #1,%d0
+        move.l  %d1,%d2
+        addq.l  #1,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        subq.l  #1,%d3
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Rows cy to cy + 1: (cx - 2, cy) to (cx + 2, cy + 1)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        move.l  %d1,%d0
+        subq.l  #2,%d0
+        addq.l  #2,%d1
+        move.l  %d1,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        move.l  %d3,%d1
+        addq.l  #1,%d3
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Row cy + 2: (cx - 1, cy + 2) to (cx + 1, cy + 2)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        move.l  %d1,%d0
+        subq.l  #1,%d0
+        addq.l  #1,%d1
+        move.l  %d1,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        addq.l  #2,%d3
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+.Lcirc_done:
+        movem.l (%sp),%d2-%d7
+        lea     24(%sp),%sp
+        rts
+
+sg_circ_hollow:
+        | Hollow circle for trigless lock
+        lea     -24(%sp),%sp
+        movem.l %d2-%d7,(%sp)
+        move.l  %d0,%d6
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1                 | d1 = cx
+        move.l  sg_rh,%d2
+        subq.l  #2,%d2
+        lsr.l   #1,%d2
+        add.l   %a4,%d2                 | d2 = cy
+
+        | Top dot: (cx, cy - 1)
+        move.l  %d1,%d0
+        move.l  %d2,%d3
+        subq.l  #1,%d3
+        move.l  %d3,%d1
+        move.l  %d0,%d2
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Mid left: (cx - 1, cy)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        move.l  %d1,%d0
+        subq.l  #1,%d0
+        move.l  %d0,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Mid right: (cx + 1, cy)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        addq.l  #1,%d1
+        move.l  %d1,%d0
+        move.l  %d0,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        | Bot dot: (cx, cy + 1)
+        move.l  sg_zbw,%d1
+        lsr.l   #1,%d1
+        add.l   %d6,%d1
+        move.l  %d1,%d0
+        move.l  %d0,%d2
+        move.l  sg_rh,%d3
+        subq.l  #2,%d3
+        lsr.l   #1,%d3
+        add.l   %a4,%d3
+        addq.l  #1,%d3
+        move.l  %d3,%d1
+        lea     SG_FILL,%a0
+        jsr     sg_r1
+
+        movem.l (%sp),%d2-%d7
+        lea     24(%sp),%sp
+        rts
+
 sg_arrbk:
         tst.l   0x460d1aec              | arranger flag: no arranger, nothing to do
         bne.s   1f
